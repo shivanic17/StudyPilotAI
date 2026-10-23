@@ -749,12 +749,7 @@ def style_fig(fig, height: int = 300, legend: bool = False):
 def page_new_profile():
     page_header("➕", "Create Student Profile", "Set up your personalised study profile to get started.")
 
-    num_subjects = st.number_input(
-        "Number of Subjects", min_value=1, max_value=8, value=2, step=1,
-        key="new_profile_subject_count",
-    )
-
-    with st.form("new_profile_form", clear_on_submit=False):
+    with st.container():
         section("About You")
         col1, col2 = st.columns(2)
         with col1:
@@ -774,9 +769,13 @@ def page_new_profile():
                 "Daily Study Hours *", min_value=0.5, max_value=16.0, value=3.0, step=0.5
             )
 
-        section("Subjects")
-
-        subject_inputs = []
+    section("Subjects")
+    num_subjects = st.number_input(
+        "Number of Subjects", min_value=1, max_value=8, value=2, step=1,
+        key="new_profile_subject_count",
+    )
+    subject_inputs = []
+    with st.container():
         with st.container(key="profile-subjects"):
             for i in range(int(num_subjects)):
                 st.markdown(f"**📘 Subject {i + 1}**")
@@ -800,41 +799,41 @@ def page_new_profile():
                         "weak_topics": [t.strip() for t in sweak.split(",") if t.strip()],
                     })
 
-        submitted = st.form_submit_button("✅ Create Profile", type="primary", use_container_width=True)
+        submitted = st.button("✅ Create Profile", type="primary", use_container_width=True)
 
-        if submitted:
-            errors = []
-            if not name.strip():
-                errors.append("Full name is required.")
-            if not subject_inputs:
-                errors.append("At least one subject with a name is required.")
-            if exam_date <= date.today():
-                errors.append("Exam date must be in the future.")
+    if submitted:
+        errors = []
+        if not name.strip():
+            errors.append("Full name is required.")
+        if not subject_inputs:
+            errors.append("At least one subject with a name is required.")
+        if exam_date <= date.today():
+            errors.append("Exam date must be in the future.")
 
-            if errors:
-                for e in errors:
-                    st.error(e)
+        if errors:
+            for e in errors:
+                st.error(e)
+        else:
+            payload = {
+                "name": name.strip(),
+                "email": email.strip() or None,
+                "knowledge_level": knowledge_level,
+                "daily_study_hours": daily_hours,
+                "exam_date": exam_date.isoformat(),
+                "subjects": subject_inputs,
+            }
+            with st.spinner("Creating your profile..."):
+                result, err = api_post("/students", payload)
+
+            if err:
+                st.error(f"Could not create profile: {err}")
             else:
-                payload = {
-                    "name": name.strip(),
-                    "email": email.strip() or None,
-                    "knowledge_level": knowledge_level,
-                    "daily_study_hours": daily_hours,
-                    "exam_date": exam_date.isoformat(),
-                    "subjects": subject_inputs,
-                }
-                with st.spinner("Creating your profile..."):
-                    result, err = api_post("/students", payload)
-
-                if err:
-                    st.error(f"Could not create profile: {err}")
-                else:
-                    st.session_state.student_id = result["id"]
-                    st.session_state.student_name = result["name"]
-                    st.success(f"Profile created for **{result['name']}**! 🎉")
-                    st.info("Next step: Go to **Study Planner** to generate your AI study plan.")
-                    st.session_state.page = "Study Planner"
-                    st.rerun()
+                st.session_state.student_id = result["id"]
+                st.session_state.student_name = result["name"]
+                st.success(f"Profile created for **{result['name']}**! 🎉")
+                st.info("Next step: Go to **Study Planner** to generate your AI study plan.")
+                st.session_state.page = "Study Planner"
+                st.rerun()
 
 
 def page_edit_profile():
@@ -850,12 +849,8 @@ def page_edit_profile():
 
     subjects = student.get("subjects", [])
     page_header("✏️", "Edit Student Profile", "Update your details or add and remove subjects.")
-    num_subjects = st.number_input(
-        "Number of Subjects", min_value=1, max_value=8, value=max(1, len(subjects)),
-        step=1, key="edit_profile_subject_count",
-    )
 
-    with st.form("edit_profile_form", clear_on_submit=False):
+    with st.container():
         section("About You")
         col1, col2 = st.columns(2)
         with col1:
@@ -875,8 +870,13 @@ def page_edit_profile():
                 value=float(student["daily_study_hours"]), step=0.5,
             )
 
-        section("Subjects")
-        subject_inputs = []
+    section("Subjects")
+    num_subjects = st.number_input(
+        "Number of Subjects", min_value=1, max_value=8, value=max(1, len(subjects)),
+        step=1, key="edit_profile_subject_count",
+    )
+    subject_inputs = []
+    with st.container():
         with st.container(key="profile-subjects"):
             for i in range(int(num_subjects)):
                 existing = subjects[i] if i < len(subjects) else {}
@@ -906,37 +906,38 @@ def page_edit_profile():
                         "weak_topics": [t.strip() for t in sweak.split(",") if t.strip()],
                     })
 
-        submitted = st.form_submit_button(
+        submitted = st.button(
             "💾 Save Profile", type="primary", use_container_width=True
         )
-        if submitted:
-            errors = []
-            if not name.strip():
-                errors.append("Full name is required.")
-            if not subject_inputs:
-                errors.append("At least one subject with a name is required.")
-            if exam_date <= date.today():
-                errors.append("Exam date must be in the future.")
-            if errors:
-                for error in errors:
-                    st.error(error)
+
+    if submitted:
+        errors = []
+        if not name.strip():
+            errors.append("Full name is required.")
+        if not subject_inputs:
+            errors.append("At least one subject with a name is required.")
+        if exam_date <= date.today():
+            errors.append("Exam date must be in the future.")
+        if errors:
+            for error in errors:
+                st.error(error)
+        else:
+            payload = {
+                "name": name.strip(),
+                "email": email.strip() or None,
+                "knowledge_level": knowledge_level,
+                "daily_study_hours": daily_hours,
+                "exam_date": exam_date.isoformat(),
+                "subjects": subject_inputs,
+            }
+            with st.spinner("Saving your profile..."):
+                result, update_err = api_put(f"/students/{student_id}", payload)
+            if update_err:
+                st.error(f"Could not update profile: {update_err}")
             else:
-                payload = {
-                    "name": name.strip(),
-                    "email": email.strip() or None,
-                    "knowledge_level": knowledge_level,
-                    "daily_study_hours": daily_hours,
-                    "exam_date": exam_date.isoformat(),
-                    "subjects": subject_inputs,
-                }
-                with st.spinner("Saving your profile..."):
-                    result, update_err = api_put(f"/students/{student_id}", payload)
-                if update_err:
-                    st.error(f"Could not update profile: {update_err}")
-                else:
-                    st.session_state.student_name = result["name"]
-                    st.success("Profile updated successfully.")
-                    st.rerun()
+                st.session_state.student_name = result["name"]
+                st.success("Profile updated successfully.")
+                st.rerun()
 
 
 def page_dashboard():
