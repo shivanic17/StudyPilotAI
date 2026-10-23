@@ -707,7 +707,7 @@ def metric_card(label: str, value: str, sub: str = "", icon: str = "✨", color:
 def style_fig(fig, height: int = 300, legend: bool = False):
     fig.update_layout(
         height=height,
-        margin=dict(l=8, r=8, t=24, b=8),
+        margin=dict(l=8, r=8, t=24, b=40),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Plus Jakarta Sans, sans-serif", color="#334155", size=12),
@@ -716,7 +716,7 @@ def style_fig(fig, height: int = 300, legend: bool = False):
         hoverlabel=dict(font_family="Plus Jakarta Sans, sans-serif"),
     )
     fig.update_yaxes(gridcolor="#FED7AA", zeroline=False)
-    fig.update_xaxes(showgrid=False)
+    fig.update_xaxes(showgrid=False, automargin=True, ticklabelstandoff=6)
     return fig
 
 
