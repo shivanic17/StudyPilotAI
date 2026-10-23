@@ -45,6 +45,15 @@ class StudentCreate(BaseModel):
         return v
 
 
+class SubjectResponse(BaseModel):
+    id: int
+    name: str
+    topics: List[str] = Field(default_factory=list)
+    weak_topics: List[str] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
 class StudentResponse(BaseModel):
     id: int
     name: str
@@ -53,6 +62,7 @@ class StudentResponse(BaseModel):
     daily_study_hours: float
     exam_date: date
     created_at: datetime
+    subjects: List[SubjectResponse] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

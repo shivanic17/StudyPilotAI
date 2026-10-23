@@ -465,6 +465,10 @@ div[role="radiogroup"] > label:has(input:checked) { border-color: var(--indigo);
 [data-testid="stSidebar"] [data-baseweb="select"] div { color: var(--ink) !important; -webkit-text-fill-color: var(--ink) !important; }
 /* Slider labels/values */
 [data-testid="stMain"] [data-testid="stSlider"] * { color: var(--ink); }
+.st-key-profile-subjects {
+    max-height: 520px; overflow-y: auto; padding: 0.5rem 0.8rem 0.8rem;
+    border: 1px solid #FED7AA; border-radius: 14px; background: rgba(255,255,255,0.45);
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -496,6 +500,23 @@ def api_post(path: str, json_data: dict = None, files=None, data=None, timeout: 
             r = requests.post(f"{BACKEND_URL}{path}", files=files, data=data, timeout=timeout)
         else:
             r = requests.post(f"{BACKEND_URL}{path}", json=json_data, timeout=timeout)
+        r.raise_for_status()
+        return r.json(), None
+    except requests.exceptions.ConnectionError:
+        return None, "Cannot connect to backend. Make sure the server is running on port 8000."
+    except requests.exceptions.HTTPError as e:
+        try:
+            detail = e.response.json().get("detail", str(e))
+        except Exception:
+            detail = str(e)
+        return None, detail
+    except Exception as e:
+        return None, f"Unexpected error: {e}"
+
+
+def api_put(path: str, json_data: dict = None):
+    try:
+        r = requests.put(f"{BACKEND_URL}{path}", json=json_data, timeout=60)
         r.raise_for_status()
         return r.json(), None
     except requests.exceptions.ConnectionError:
@@ -615,6 +636,8 @@ def sidebar():
             ("📈", "Progress"),
             ("➕", "New Profile"),
         ]
+        if st.session_state.student_id:
+            pages.insert(-1, ("✏️", "Edit Profile"))
 
         for icon, name in pages:
             label = f"{icon}  {name}"
@@ -726,6 +749,11 @@ def style_fig(fig, height: int = 300, legend: bool = False):
 def page_new_profile():
     page_header("➕", "Create Student Profile", "Set up your personalised study profile to get started.")
 
+    num_subjects = st.number_input(
+        "Number of Subjects", min_value=1, max_value=8, value=2, step=1,
+        key="new_profile_subject_count",
+    )
+
     with st.form("new_profile_form", clear_on_submit=False):
         section("About You")
         col1, col2 = st.columns(2)
@@ -747,34 +775,30 @@ def page_new_profile():
             )
 
         section("Subjects")
-        num_subjects = st.number_input("Number of Subjects", min_value=1, max_value=8, value=2, step=1)
 
         subject_inputs = []
-        for i in range(int(num_subjects)):
-            st.markdown(f"**📘 Subject {i + 1}**")
-            sc1, sc2, sc3 = st.columns(3)
-            with sc1:
-                sname = st.text_input("Subject Name", key=f"sname_{i}", placeholder="e.g. Mathematics")
-            with sc2:
-                stopics = st.text_area(
-                    "Topics (comma-separated)", key=f"stopics_{i}",
-                    placeholder="e.g. Calculus, Algebra, Trigonometry",
-                    height=80,
-                )
-            with sc3:
-                sweak = st.text_area(
-                    "Weak Topics (comma-separated)", key=f"sweak_{i}",
-                    placeholder="e.g. Integration, Matrices",
-                    height=80,
-                )
-            if sname.strip():
-                subject_inputs.append(
-                    {
+        with st.container(key="profile-subjects"):
+            for i in range(int(num_subjects)):
+                st.markdown(f"**📘 Subject {i + 1}**")
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
+                    sname = st.text_input("Subject Name", key=f"sname_{i}", placeholder="e.g. Mathematics")
+                with sc2:
+                    stopics = st.text_area(
+                        "Topics (comma-separated)", key=f"stopics_{i}",
+                        placeholder="e.g. Calculus, Algebra, Trigonometry", height=80,
+                    )
+                with sc3:
+                    sweak = st.text_area(
+                        "Weak Topics (comma-separated)", key=f"sweak_{i}",
+                        placeholder="e.g. Integration, Matrices", height=80,
+                    )
+                if sname.strip():
+                    subject_inputs.append({
                         "name": sname.strip(),
                         "topics": [t.strip() for t in stopics.split(",") if t.strip()],
                         "weak_topics": [t.strip() for t in sweak.split(",") if t.strip()],
-                    }
-                )
+                    })
 
         submitted = st.form_submit_button("✅ Create Profile", type="primary", use_container_width=True)
 
@@ -810,6 +834,108 @@ def page_new_profile():
                     st.success(f"Profile created for **{result['name']}**! 🎉")
                     st.info("Next step: Go to **Study Planner** to generate your AI study plan.")
                     st.session_state.page = "Study Planner"
+                    st.rerun()
+
+
+def page_edit_profile():
+    student_id = st.session_state.get("student_id")
+    if not student_id:
+        st.warning("Please select a student profile from the sidebar.")
+        return
+
+    student, err = api_get(f"/students/{student_id}")
+    if err:
+        st.error(f"Could not load profile: {err}")
+        return
+
+    subjects = student.get("subjects", [])
+    page_header("✏️", "Edit Student Profile", "Update your details or add and remove subjects.")
+    num_subjects = st.number_input(
+        "Number of Subjects", min_value=1, max_value=8, value=max(1, len(subjects)),
+        step=1, key="edit_profile_subject_count",
+    )
+
+    with st.form("edit_profile_form", clear_on_submit=False):
+        section("About You")
+        col1, col2 = st.columns(2)
+        with col1:
+            name = st.text_input("Full Name *", value=student["name"])
+            email = st.text_input("Email (optional)", value=student.get("email") or "")
+            knowledge_level = st.selectbox(
+                "Knowledge Level *", ["Beginner", "Intermediate", "Advanced"],
+                index=["Beginner", "Intermediate", "Advanced"].index(student["knowledge_level"]),
+            )
+        with col2:
+            exam_date = st.date_input(
+                "Exam Date *", value=date.fromisoformat(student["exam_date"]),
+                min_value=date.today() + timedelta(days=1),
+            )
+            daily_hours = st.number_input(
+                "Daily Study Hours *", min_value=0.5, max_value=16.0,
+                value=float(student["daily_study_hours"]), step=0.5,
+            )
+
+        section("Subjects")
+        subject_inputs = []
+        with st.container(key="profile-subjects"):
+            for i in range(int(num_subjects)):
+                existing = subjects[i] if i < len(subjects) else {}
+                st.markdown(f"**📘 Subject {i + 1}**")
+                sc1, sc2, sc3 = st.columns(3)
+                with sc1:
+                    sname = st.text_input(
+                        "Subject Name", value=existing.get("name", ""),
+                        key=f"edit_sname_{i}", placeholder="e.g. Mathematics",
+                    )
+                with sc2:
+                    stopics = st.text_area(
+                        "Topics (comma-separated)",
+                        value=", ".join(existing.get("topics", [])),
+                        key=f"edit_stopics_{i}", height=80,
+                    )
+                with sc3:
+                    sweak = st.text_area(
+                        "Weak Topics (comma-separated)",
+                        value=", ".join(existing.get("weak_topics", [])),
+                        key=f"edit_sweak_{i}", height=80,
+                    )
+                if sname.strip():
+                    subject_inputs.append({
+                        "name": sname.strip(),
+                        "topics": [t.strip() for t in stopics.split(",") if t.strip()],
+                        "weak_topics": [t.strip() for t in sweak.split(",") if t.strip()],
+                    })
+
+        submitted = st.form_submit_button(
+            "💾 Save Profile", type="primary", use_container_width=True
+        )
+        if submitted:
+            errors = []
+            if not name.strip():
+                errors.append("Full name is required.")
+            if not subject_inputs:
+                errors.append("At least one subject with a name is required.")
+            if exam_date <= date.today():
+                errors.append("Exam date must be in the future.")
+            if errors:
+                for error in errors:
+                    st.error(error)
+            else:
+                payload = {
+                    "name": name.strip(),
+                    "email": email.strip() or None,
+                    "knowledge_level": knowledge_level,
+                    "daily_study_hours": daily_hours,
+                    "exam_date": exam_date.isoformat(),
+                    "subjects": subject_inputs,
+                }
+                with st.spinner("Saving your profile..."):
+                    result, update_err = api_put(f"/students/{student_id}", payload)
+                if update_err:
+                    st.error(f"Could not update profile: {update_err}")
+                else:
+                    st.session_state.student_name = result["name"]
+                    st.success("Profile updated successfully.")
                     st.rerun()
 
 
@@ -1632,6 +1758,8 @@ def main():
         page_progress()
     elif page == "New Profile":
         page_new_profile()
+    elif page == "Edit Profile":
+        page_edit_profile()
     else:
         page_dashboard()
 

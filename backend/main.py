@@ -113,6 +113,47 @@ def get_student(student_id: int, db: Session = Depends(get_db)):
     return student
 
 
+@app.put("/students/{student_id}", response_model=schemas.StudentResponse, tags=["Students"])
+def update_student(
+    student_id: int, payload: schemas.StudentCreate, db: Session = Depends(get_db)
+):
+    """Update a student profile and replace its subject list."""
+    student = db.query(models.Student).filter(models.Student.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found.")
+
+    duplicate = (
+        db.query(models.Student)
+        .filter(models.Student.name == payload.name, models.Student.id != student_id)
+        .first()
+    )
+    if duplicate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A student named '{payload.name}' already exists.",
+        )
+
+    student.name = payload.name
+    student.email = payload.email
+    student.knowledge_level = payload.knowledge_level
+    student.daily_study_hours = payload.daily_study_hours
+    student.exam_date = payload.exam_date
+    student.subjects.clear()
+    for subj_in in payload.subjects:
+        student.subjects.append(
+            models.Subject(
+                name=subj_in.name,
+                topics=subj_in.topics,
+                weak_topics=subj_in.weak_topics,
+            )
+        )
+
+    db.commit()
+    db.refresh(student)
+    logger.info("Updated student: %s (id=%d)", student.name, student.id)
+    return student
+
+
 @app.delete("/students/{student_id}", tags=["Students"])
 def delete_student(student_id: int, db: Session = Depends(get_db)):
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
